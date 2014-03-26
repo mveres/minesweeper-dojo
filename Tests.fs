@@ -20,13 +20,11 @@ let ``Given 1 1|* should output *`` () =
 let ``Given 1 1|, should output 0`` () =
     "1 1\r\n." |> createFields |> should equal "0"
 
-
 // 1 5   ->  1*2*1
 // .*.*.
 [<Test>]
 let ``Given 1 5|,*,*, should output 1*2*1`` () =
     "1 5\r\n.*.*." |> createFields |> should equal "1*2*1"
-
 
 // 2 2   ->  2*
 // .*        2*
@@ -34,5 +32,3 @@ let ``Given 1 5|,*,*, should output 1*2*1`` () =
 [<Test>]
 let ``Given 2 2|,*|,* should output 2*|2*`` () =
     "2 2\r\n.*\r\n.*" |> createFields |> should equal "2*\r\n2*"
-
-
