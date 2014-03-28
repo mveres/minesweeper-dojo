@@ -1,66 +1,91 @@
 ﻿module minesweeper
 
 open System
+open FSharpx
 
-let split input =
-   let rec getLine str =
-      seq {
-         let idx = str |> Seq.tryFindIndex ((=) '\r')
-         match idx with
-         | Some n -> yield str |> Seq.take n
-                     yield! (str |> Seq.skip (n+2) |> getLine)
+type Square = Bomb|Clear of int
 
-         | None -> yield str
-      }
-   getLine input
 
-let getSize sizeSeq =
-   let intAt i= sizeSeq |> Seq.nth i |> fun c -> Int32.Parse(c.ToString())
-   (intAt 0),(intAt 2)
+let splitLines input =
+    let rec getLines str =
+        seq {
+            let idx = str |> Seq.tryFindIndex ((=) '\r')
+            match idx with
+            | Some n -> yield str |> Seq.take n
+                        yield! (str |> Seq.skip (n+2) |> getLines)
+            | None -> yield str
+        }
+    getLines input
 
-let createCoordField height lines =
-   let field = seq {
-                     for y = 0 to (height-1) do
-                     yield (lines |> Seq.nth y |> Seq.mapi (fun x c -> x,y,c))
-                   }
+                                 
+let getCoordField lines =
+    let getField =
+        Seq.skip 1
+        >> Seq.map (fun line ->
+                        line
+                        |> Seq.map (function
+                                    |'*' -> Bomb
+                                    |_ -> Clear 0)
+                   )
+                       
+    let createCoords = 
+        Seq.mapi (fun y line ->
+                    line 
+                    |> Seq.mapi (fun x v -> (x,y),v)
+                 )
+        >> Seq.concat
 
-   field |> Seq.concat
+    lines
+    |> getField
+    |> createCoords
 
-let isNeighbour (x1,y1) (x2,y2) =
-   let dx = abs(x2-x1)
-   let dy = abs(y2-y1)
-   (dx + dy) >= 1 && (dx + dy) <= 2 && dx < 2 && dy < 2
 
-let getNeighbours (x,y) field =
-   field |> Seq.filter (fun (xi,yi,v) -> isNeighbour (xi,yi) (x,y))
+let getCountField field =
+    let areNeighbours (x1,y1) (x2,y2)=
+        let dx = x2 - x1 |> float
+        let dy = y2 - y1 |> float
+        let d = dx**2.0 + dy**2.0 |> sqrt
+        d = 1.0 || d = sqrt 2.0
 
-let getSquareValue field (x,y,v) =
-   if v = '*'
-   then id v
-   else
-      field
-      |> getNeighbours (x,y)
-      |> Seq.filter (fun (x,y,v) -> v = '*') |> Seq.length
-      |> fun count -> char (count.ToString())
+    let countNeighbourBombs cl =
+        Seq.filter (fun (ol,s) -> areNeighbours cl ol)
+        >> Seq.filter (fun (l,s) -> s = Bomb)
+        >> Seq.length
 
-let insertNewLines width field =
-      let appendNewLine str = Seq.append (Seq.append str ['\r'] ) ['\n']
-      let rec getLines str =
-         seq {
-            let length = str |> Seq.length
-            if length > width
-            then
-               yield! (str |> Seq.take width |> appendNewLine)
-               yield! getLines (str |> Seq.skip width)
-            else
-               yield! str
-         }
-      getLines field
+    field
+    |> Seq.map (fun (l,s) -> match s with
+                             |Bomb -> l,Bomb
+                             |Clear _ -> l,(Clear (countNeighbourBombs l field))
+               )
 
-let createFields input =
-   let splitInput = input |> split
-   let height,width =
-      splitInput
-      |> Seq.nth 0 |> getSize
-   let coordField = splitInput |> Seq.skip 1 |> createCoordField height
-   coordField |> Seq.map (getSquareValue coordField) |> insertNewLines width
+
+let renderField field =
+    let rowCount = 
+        if Seq.isEmpty field 
+        then 0
+        else field
+             |> Seq.map (fun ((x,y),s) -> y)
+             |> Seq.max
+               
+    
+    let lines =
+        seq {
+            for row in 0 .. rowCount do
+            yield field
+                  |> Seq.filter (fun ((x,y),s) -> y = row)
+                  |> Seq.map (fun (l,s) -> match s with
+                                           |Bomb -> '*'
+                                           |Clear c -> char (int '0' + c) //ex. 6 -> '6'
+                             )
+                  |> String.Concat
+        }
+            
+    String.concat "\r\n" lines
+
+    
+let createField input =
+   input
+   |> splitLines
+   |> getCoordField
+   |> getCountField
+   |> renderField
