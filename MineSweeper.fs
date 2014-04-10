@@ -3,89 +3,86 @@
 open System
 open FSharpx
 
-type Square = Bomb|Clear of int
+type Square = 
+    |Bomb
+    |Clear
+
+    static member parse = function
+                          |'*' -> Bomb
+                          |_ -> Clear
+
+    static member isBomb = (=) Bomb
 
 
-let splitLines input =
-    let rec getLines str =
-        seq {
-            let idx = str |> Seq.tryFindIndex ((=) '\r')
-            match idx with
-            | Some n -> yield str |> Seq.take n
-                        yield! (str |> Seq.skip (n+2) |> getLines)
-            | None -> yield str
-        }
-    getLines input
+type HintSquare =
+    | Bomb
+    | Hint of int
 
-                                 
-let getCoordField lines =
-    let getField =
-        Seq.skip 1
-        >> Seq.map (fun line ->
-                        line
-                        |> Seq.map (function
-                                    |'*' -> Bomb
-                                    |_ -> Clear 0)
-                   )
-                       
-    let createCoords = 
-        Seq.mapi (fun y line ->
-                    line 
-                    |> Seq.mapi (fun x v -> (x,y),v)
-                 )
-        >> Seq.concat
+    static member getHint (square:Square) hintNumber = 
+        match square with
+        |Square.Bomb -> HintSquare.Bomb
+        |Square.Clear -> HintSquare.Hint hintNumber
 
-    lines
-    |> getField
-    |> createCoords
+    static member render =
+        function
+        |Bomb -> '*'
+        |Hint c -> char (int '0' + c) //ex. 6 -> '6'
 
 
-let getCountField field =
-    let areNeighbours (x1,y1) (x2,y2)=
+let parse input =
+    let words = Strings.toWords input
+    let width = Int32.Parse (Seq.nth 1 words) //second word should be the width
+
+    let parsedField = words 
+                      |> Seq.skip 2
+                      |> Seq.map (Seq.map (Square.parse))
+    
+    width, parsedField
+
+
+let areNeighbours (x1,y1) (x2,y2)=
         let dx = x2 - x1 |> float
         let dy = y2 - y1 |> float
         let d = dx**2.0 + dy**2.0 |> sqrt
         d = 1.0 || d = sqrt 2.0
 
-    let countNeighbourBombs cl =
-        Seq.filter (fun (ol,s) -> areNeighbours cl ol)
-        >> Seq.filter (fun (l,s) -> s = Bomb)
+
+let calculateHints (field:seq<seq<Square>>) =
+    let coordsField = 
+        field
+        |> Seq.mapi (fun y line ->
+                        line |> Seq.mapi (fun x square -> (x,y),square))
+        |> Seq.concat
+
+    let countNeighbourBombs currentLocation =
+        Seq.filter (fun (otherLocation, square) -> areNeighbours currentLocation otherLocation)
+        >> Seq.filter (snd >> Square.isBomb)
         >> Seq.length
-
-    field
-    |> Seq.map (fun (l,s) -> match s with
-                             |Bomb -> l,Bomb
-                             |Clear _ -> l,(Clear (countNeighbourBombs l field))
-               )
-
-
-let renderField field =
-    let rowCount = 
-        if Seq.isEmpty field 
-        then 0
-        else field
-             |> Seq.map (fun ((x,y),s) -> y)
-             |> Seq.max
-               
     
-    let lines =
+    let getHintSquare (location:int*int, square:Square) =
+        HintSquare.getHint square (countNeighbourBombs location coordsField)
+
+    coordsField
+    |> Seq.map getHintSquare
+
+
+let renderField width hintField =
+
+    let rec getLines charField =
         seq {
-            for row in 0 .. rowCount do
-            yield field
-                  |> Seq.filter (fun ((x,y),s) -> y = row)
-                  |> Seq.map (fun (l,s) -> match s with
-                                           |Bomb -> '*'
-                                           |Clear c -> char (int '0' + c) //ex. 6 -> '6'
-                             )
-                  |> String.Concat
+             yield charField |> Seq.truncate width
+             if Seq.length charField > width then
+                yield! getLines (Seq.skip width charField)
         }
             
-    String.concat "\r\n" lines
+    hintField
+    |> Seq.map HintSquare.render
+    |> getLines
+    |> Seq.map (String.Concat)
+    |> String.concat "\r\n"
 
     
-let createField input =
-   input
-   |> splitLines
-   |> getCoordField
-   |> getCountField
-   |> renderField
+let createFieldWithHints input =
+   let width, parsedField = parse input
+   let hintField = calculateHints parsedField
+   renderField width hintField
