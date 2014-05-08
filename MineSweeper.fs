@@ -67,7 +67,6 @@ let calculateHints (field:seq<seq<Square>>) =
 
 
 let renderField width hintField =
-
     let rec getLines charField =
         seq {
              yield charField |> Seq.truncate width
